@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Tilt Table controller</title>
+<style>
+  :root { --slate:#1f2a33; --brass:#d4a72c; --chalk:#eef1f3; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:var(--slate); color:var(--chalk); font:17px/1.4 system-ui, sans-serif;
+         display:flex; flex-direction:column; gap:16px; padding:20px; touch-action:manipulation; }
+  h1 { margin:0; font:700 26px/1 Georgia, serif; }
+  .card { background:#2b3945; border-radius:14px; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  input { font:700 30px ui-monospace, Menlo, monospace; letter-spacing:8px; text-align:center; text-transform:uppercase;
+          padding:10px; border-radius:10px; border:2px solid #4a5b69; background:#1f2a33; color:var(--chalk); width:100%; }
+  button { font:inherit; font-weight:700; padding:14px; border:0; border-radius:10px; background:var(--brass); color:#2a2000; }
+  button.secondary { background:#4a5b69; color:var(--chalk); }
+  .row { display:flex; gap:10px; align-items:center; }
+  .dot { width:12px; height:12px; border-radius:50%; background:#b3261e; flex:none; }
+  .dot.on { background:#4cc38a; }
+  .pad { position:relative; height:200px; border-radius:14px; background:#17212a; overflow:hidden; }
+  .pad::before, .pad::after { content:""; position:absolute; background:#ffffff18; }
+  .pad::before { left:50%; top:0; bottom:0; width:1px; } .pad::after { top:50%; left:0; right:0; height:1px; }
+  #dot { position:absolute; width:28px; height:28px; border-radius:50%; background:var(--brass); left:50%; top:50%; margin:-14px 0 0 -14px; }
+  #err { color:#ff8a80; min-height:1.4em; }
+  .muted { color:#aeb9c2; font-size:15px; }
+</style>
+</head>
+<body>
+<h1>Tilt Table controller</h1>
+
+<div class="card" id="setup">
+  <label for="room">Room code from your laptop</label>
+  <input id="room" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD">
+  <button id="go">Connect and enable motion</button>
+  <div id="err" role="alert"></div>
+</div>
+
+<div class="card" id="live" hidden>
+  <div class="row"><span class="dot" id="dotConn"></span><span id="status">Connecting...</span></div>
+  <div class="pad"><div id="dot"></div></div>
+  <button id="cal">Calibrate (hold flat, then tap)</button>
+  <div class="row muted"><span>Latency <b id="lat">--</b> ms</span></div>
+  <div class="muted">Tilt to move the ball. Shake for a speed boost.</div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const params = new URLSearchParams(location.search);
+$('room').value = (params.get('room') || sessionStorage.getItem('croom') || '').toUpperCase();
+
+let ws, retry = 0, room = '', g0 = null, b0 = null, rawG = 0, rawB = 0, lastSend = 0, lastShake = 0, connected = false;
+const clamp = (v) => Math.max(-1, Math.min(1, v));
+const FULL_TILT = 30;   // degrees of tilt that counts as full speed
+
+$('go').onclick = async () => {
+  room = $('room').value.trim().toUpperCase();
+  if (room.length !== 4) { $('err').textContent = 'Enter the 4-character code shown on your laptop.'; return; }
+  // iOS needs an explicit permission request from a tap
+  try {
+    for (const API of [DeviceOrientationEvent, DeviceMotionEvent]) {
+      if (typeof API.requestPermission === 'function') {
+        const res = await API.requestPermission();
+        if (res !== 'granted') { $('err').textContent = 'Motion access was denied. Allow it in Safari settings and try again.'; return; }
+      }
+    }
+  } catch (e) { $('err').textContent = 'Could not enable motion sensors. This page needs HTTPS.'; return; }
+  if (!window.isSecureContext) { $('err').textContent = 'Sensors need HTTPS. Open the https:// link of the deployed app.'; return; }
+  sessionStorage.setItem('croom', room);
+  $('setup').hidden = true; $('live').hidden = false;
+  addEventListener('deviceorientation', onOrient);
+  addEventListener('devicemotion', onMotion);
+  open();
+};
+
+function open() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ t: 'join', code: room })); setStatus(false, 'Joining room ' + room + '...'); };
+  ws.onclose = () => { connected = false; setStatus(false, 'Connection lost, reconnecting...'); setTimeout(open, Math.min(500 * 2 ** retry++, 5000)); };
+  ws.onmessage = (e) => {
+    const m = JSON.parse(e.data);
+    if (m.t === 'joined') { connected = true; setStatus(true, 'Connected to laptop (room ' + room + ')'); }
+    else if (m.t === 'error') { setStatus(false, m.msg); setTimeout(() => ws.close(), 2000); }   // retry; laptop may not be up yet
+    else if (m.t === 'hostStatus') setStatus(m.connected, m.connected ? 'Connected to laptop (room ' + room + ')' : 'Laptop disconnected, waiting...');
+    else if (m.t === 'vibrate' && navigator.vibrate) navigator.vibrate(m.ms);
+    else if (m.t === 'pong') { const ms = performance.now() - m.ts; $('lat').textContent = Math.round(ms); send({ t: 'lat', ms }); }
+  };
+}
+function setStatus(ok, text) { $('dotConn').classList.toggle('on', ok); $('status').textContent = text; }
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+function onOrient(e) {
+  if (e.gamma == null) return;
+  rawG = e.gamma; rawB = e.beta;
+  if (g0 === null) { g0 = rawG; b0 = rawB; }                  // auto-calibrate on first reading
+  const x = clamp((rawG - g0) / FULL_TILT), y = clamp((rawB - b0) / FULL_TILT);
+  $('dot').style.transform = `translate(${x * 80}px, ${y * 80}px)`;
+  const now = performance.now();
+  if (connected && now - lastSend > 15) { lastSend = now; send({ t: 'tilt', x: +x.toFixed(3), y: +y.toFixed(3) }); }
+}
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity; if (!a) return;
+  const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0), now = performance.now();
+  if (mag > 25 && now - lastShake > 700) { lastShake = now; send({ t: 'shake' }); if (navigator.vibrate) navigator.vibrate(30); }
+}
+$('cal').onclick = () => { g0 = rawG; b0 = rawB; if (navigator.vibrate) navigator.vibrate(20); };
+setInterval(() => send({ t: 'ping', ts: performance.now() }), 1000);
+</script>
+</body>
+</html>
