@@ -1,6 +1,6 @@
-# Tilt Table: phone as a motion controller
+# Pocket Gyro Game (Tilt Table)
 
-Your phone becomes a motion controller for a browser game on your laptop. Tilt the phone to roll a steel ball around a felt table, collect gold coins, dodge the red blocks, and shake the phone for a speed boost. You have 60 seconds.
+Your phone becomes a motion controller for a browser game on your laptop. Tilt the phone to roll a steel ball around a felt table, collect gold coins, dodge the red blocks, and shake the phone for a speed boost. You have 60 seconds, and every 8 coins starts a new level with faster blocks, an extra block and 5 bonus seconds. Collecting coins quickly builds a combo multiplier up to x5.
 
 ## Tech stack
 - **Phone app:** a mobile web app (`public/controller.html`) using the `DeviceOrientation` and `DeviceMotion` browser APIs (gyroscope and accelerometer). No install needed; it can be added to the home screen.
@@ -28,6 +28,10 @@ The laptop asks the server for a 4-character room code and shows it with a QR co
 | Tilt forward/back (beta) | Roll the ball up/down |
 | Shake | Speed boost (or restart after game over) |
 | Calibrate button | Sets the current phone angle as the neutral position |
+| Arrow keys / WASD (laptop) | Same as tilting, so the game is playable without a phone |
+| P or Esc (laptop) | Pause / resume |
+
+Landscape mode is supported: the phone rotates the tilt axes to match the screen and re-calibrates when you rotate it. Sensitivity and a mute switch are on the laptop screen.
 
 The first sensor reading auto-calibrates. Tilt of 30 degrees from neutral counts as full speed.
 
@@ -48,6 +52,9 @@ The first sensor reading auto-calibrates. Tilt of 30 degrees from neutral counts
 ## Bonus features included
 - Vibration feedback on the phone when you collect a coin (short), hit a block (long) or finish (longer). Works on Android Chrome; iOS Safari does not support the Vibration API.
 - Live latency display.
+- Combo multiplier, levels, particle effects, screen shake and sound effects (generated with WebAudio, no asset files).
+- Keyboard fallback, pause, adjustable sensitivity.
+- If the phone disconnects mid-game the game pauses and resumes automatically when the phone reconnects.
 
 ## Project structure
 ```
@@ -55,5 +62,3 @@ server.js              WebSocket relay + static file server
 public/index.html      Laptop game
 public/controller.html Phone controller
 ```
-# pocket-gyro-game
-Tilt your phone to control a browser game on your laptop. Built with WebSockets, Node.js and the DeviceOrientation API.
