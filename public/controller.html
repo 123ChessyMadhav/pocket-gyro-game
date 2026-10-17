@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#060a18">
+<meta name="color-scheme" content="dark">
+<title>Pocket Gyro controller</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23080d24'/%3E%3Ccircle cx='32' cy='32' r='15' fill='%2322e4ff'/%3E%3Ccircle cx='27' cy='27' r='5' fill='%23fff' opacity='.8'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg-0:#060a18; --bg-1:#0b1230; --surface:rgba(14,22,54,.78); --surface-2:rgba(255,255,255,.06); --border:rgba(130,170,255,.24);
+  --text:#e9efff; --muted:#a5b4dc; --faint:#8a99c4; --cyan:#22e4ff; --blue:#7aa2ff; --violet:#8b5cf6; --coin:#ffd24a; --danger:#ff4d6d; --danger-text:#ff7a93; --ok:#3ddc97;
+  --r-md:16px; --r-lg:24px; --sp-1:4px; --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:24px;
+  --font:ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; --mono:ui-monospace, Menlo, Consolas, monospace;
+  --safe-t:env(safe-area-inset-top,0px); --safe-b:env(safe-area-inset-bottom,0px); --safe-l:env(safe-area-inset-left,0px); --safe-r:env(safe-area-inset-right,0px);
+}
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+[hidden] { display:none !important; }
+html, body { height:100%; }
+body { margin:0; font:17px/1.4 var(--font); color:var(--text); overscroll-behavior:none; -webkit-user-select:none; user-select:none; touch-action:manipulation;
+  background:radial-gradient(900px 480px at 10% -10%, rgba(139,92,246,.3), transparent 60%), radial-gradient(700px 420px at 100% 0, rgba(34,228,255,.18), transparent 60%), linear-gradient(180deg,var(--bg-1),var(--bg-0)); background-attachment:fixed; }
+.ctl { min-height:100vh; min-height:100dvh; display:flex; flex-direction:column; gap:var(--sp-3); padding:max(var(--sp-4),var(--safe-t)) max(var(--sp-4),var(--safe-r)) max(var(--sp-4),var(--safe-b)) max(var(--sp-4),var(--safe-l)); }
+:focus-visible { outline:3px solid var(--cyan); outline-offset:2px; }
+.ctl-top { display:flex; align-items:center; justify-content:space-between; gap:var(--sp-3); }
+.brand { font-weight:800; letter-spacing:.2em; font-size:.85rem; display:flex; align-items:center; gap:var(--sp-2); } .brand b { color:var(--cyan); }
+.brand i { width:20px; height:20px; border-radius:50%; background:radial-gradient(circle at 35% 30%,#fff,var(--cyan) 40%,#0b7ea0); box-shadow:0 0 12px rgba(34,228,255,.7); }
+.chip { padding:4px 12px; border-radius:99px; background:var(--surface-2); border:1px solid var(--border); font:700 .8rem var(--mono); color:var(--coin); letter-spacing:.12em; }
+.panel { padding:var(--sp-5); background:var(--surface); border:1px solid var(--border); border-radius:var(--r-lg); display:flex; flex-direction:column; gap:var(--sp-4); box-shadow:0 18px 50px rgba(0,0,0,.45); }
+@supports (backdrop-filter:blur(8px)) { .panel { -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); } }
+h1 { margin:0; font-size:1.7rem; } .muted { color:var(--muted); font-size:.92rem; margin:0; }
+label { color:var(--faint); font-size:.78rem; letter-spacing:.14em; text-transform:uppercase; }
+input[type=text] { font:800 2.2rem var(--mono); letter-spacing:.4em; text-align:center; text-transform:uppercase; padding:14px 8px 14px calc(8px + .4em); border-radius:var(--r-md); border:2px solid var(--border); background:rgba(0,0,0,.35); color:var(--coin); width:100%; -webkit-user-select:text; user-select:text; }
+input[type=text]:focus { border-color:var(--cyan); outline:none; box-shadow:0 0 0 3px rgba(34,228,255,.25); }
+.btn { display:inline-flex; align-items:center; justify-content:center; min-height:56px; padding:12px 20px; border-radius:var(--r-md); border:1px solid var(--border); background:var(--surface-2); color:var(--text); font:700 1.05rem var(--font); transition:transform .12s, background .2s; }
+.btn:active { transform:scale(.96); } .btn:disabled { opacity:.4; }
+.btn-primary { background:linear-gradient(135deg,var(--cyan),var(--blue)); color:#04101c; border-color:transparent; box-shadow:0 0 0 1px rgba(34,228,255,.4), 0 0 26px rgba(34,228,255,.28); }
+.btn-ghost { background:transparent; min-height:48px; }
+#err { color:var(--danger-text); min-height:1.4em; margin:0; font-size:.95rem; }
+.live { flex:1 1 auto; display:flex; flex-direction:column; gap:var(--sp-3); min-height:0; }
+.banner { display:flex; align-items:center; gap:var(--sp-3); padding:var(--sp-3) var(--sp-4); border-radius:var(--r-md); background:rgba(194,38,74,.28); border:1px solid rgba(255,77,109,.5); font-weight:700; transition:background .3s, border-color .3s; }
+.banner.ok { background:rgba(61,220,151,.14); border-color:rgba(61,220,151,.5); }
+.dot { width:12px; height:12px; border-radius:50%; background:var(--danger); color:var(--danger); box-shadow:0 0 10px currentColor; flex:none; } .dot.on { background:var(--ok); color:var(--ok); }
+.pad { position:relative; flex:1 1 auto; min-height:210px; border-radius:var(--r-lg); overflow:hidden; touch-action:none; border:2px solid var(--border);
+  background:radial-gradient(circle at 50% 50%, rgba(34,228,255,.10), transparent 62%), rgba(5,9,26,.8); }
+.pad.touch { border-color:var(--cyan); box-shadow:0 0 28px rgba(34,228,255,.25) inset; }
+.pad::before, .pad::after { content:""; position:absolute; background:rgba(130,170,255,.16); } .pad::before { left:50%; top:0; bottom:0; width:1px; } .pad::after { top:50%; left:0; right:0; height:1px; }
+.dzring { position:absolute; left:50%; top:50%; width:calc((100% - 28px) * var(--dz,.06)); aspect-ratio:1; min-width:10px; transform:translate(-50%,-50%); border:1px dashed rgba(255,210,74,.6); border-radius:50%; }
+#dot { position:absolute; width:30px; height:30px; margin:-15px 0 0 -15px; left:50%; top:50%; border-radius:50%; background:radial-gradient(circle at 35% 30%,#fff,var(--cyan) 45%,#0b7ea0); box-shadow:0 0 18px rgba(34,228,255,.8); will-change:transform; }
+.padhint { position:absolute; left:0; right:0; bottom:10px; text-align:center; font-size:.8rem; color:var(--faint); pointer-events:none; }
+.side { display:flex; flex-direction:column; gap:var(--sp-3); }
+.btns { display:grid; grid-template-columns:1fr 1fr; gap:var(--sp-3); }
+.meta { display:flex; flex-wrap:wrap; justify-content:space-between; gap:var(--sp-2) var(--sp-4); font-size:.85rem; color:var(--muted); } .meta b { color:var(--text); }
+details { background:var(--surface-2); border:1px solid var(--border); border-radius:var(--r-md); padding:var(--sp-3) var(--sp-4); }
+summary { cursor:pointer; font-weight:700; min-height:40px; display:flex; align-items:center; }
+details label { display:block; margin-top:var(--sp-3); font-size:.85rem; letter-spacing:.04em; text-transform:none; color:var(--muted); } details label b { color:var(--text); }
+details input[type=range] { width:100%; height:36px; accent-color:var(--cyan); }
+@media (orientation:landscape) and (max-height:520px) { .ctl { padding-top:max(8px,var(--safe-t)); padding-bottom:max(8px,var(--safe-b)); gap:8px; flex-direction:row; flex-wrap:wrap; align-items:stretch; } .ctl-top { width:100%; } .live { flex-direction:row; flex-wrap:wrap; } .live > .pad { flex:2 1 55%; min-height:150px; } .live > .side { flex:1 1 38%; display:flex; flex-direction:column; gap:var(--sp-2); } }
+@media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+<main class="ctl">
+  <header class="ctl-top"><div class="brand"><i aria-hidden="true"></i><span>POCKET<b>GYRO</b></span></div><span class="chip" id="roomChip">CONTROLLER</span></header>
+
+  <section class="panel" id="setup">
+    <h1>Connect to your game</h1>
+    <p class="muted">Enter the room code shown on the computer, or scan its QR code.</p>
+    <div><label for="room">Room code</label>
+      <input type="text" id="room" maxlength="4" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false" inputmode="text" placeholder="ABCD"></div>
+    <button class="btn btn-primary" id="go">Connect and enable motion</button>
+    <p class="muted">Your browser will ask for motion access. If you decline, or this phone has no motion sensor, you can steer with the touch pad instead.</p>
+    <p id="err" role="alert"></p>
+  </section>
+
+  <section class="live" id="live" hidden>
+    <div class="banner" id="banner" role="status"><i class="dot" id="dotConn"></i><span id="status">Connecting...</span></div>
+    <div class="pad" id="pad" aria-label="Steering pad"><div class="dzring"></div><div id="dot"></div><span class="padhint" id="padHint">Hold the phone flat, tap Calibrate, then tilt</span></div>
+    <div class="side">
+      <div class="btns"><button class="btn btn-primary" id="cal">Calibrate</button><button class="btn" id="modeBtn">Use touch pad</button></div>
+      <div class="meta"><span id="sensor">Motion sensor: waiting...</span><span>Mode <b id="mode">Tilt</b></span><span>Ping <b id="lat">--</b> ms</span></div>
+      <p class="muted" id="help">Hold the phone flat, tap Calibrate, then tilt to move. Shake for a speed boost.</p>
+      <details>
+        <summary>Tuning</summary>
+        <label>Dead zone: <b id="dzVal">6</b>%<input id="dz" type="range" min="0" max="15" step="1" value="6"></label>
+        <label>Smoothing: <b id="smVal">Balanced</b><input id="sm" type="range" min="0.15" max="0.8" step="0.05" value="0.4"></label>
+        <label>Tilt range for full speed: <b id="rgVal">30</b>&deg;<input id="rg" type="range" min="15" max="45" step="5" value="30"></label>
+      </details>
+      <button class="btn btn-ghost" id="fs" hidden>Full screen</button>
+    </div>
+  </section>
+</main>
+
+<script src="logic.js">
+// ---- full screen (Android Chrome): hides the browser bars so the whole screen is the controller ----
+const fsOK = document.fullscreenEnabled && document.documentElement.requestFullscreen;
+$('fs').hidden = !fsOK;
+$('fs').onclick = async () => { try { if (document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen({ navigationUI: 'hide' }); } catch (e) { $('help').textContent = 'Full screen is not available in this browser.'; } };
+document.addEventListener('fullscreenchange', () => { $('fs').textContent = document.fullscreenElement ? 'Exit full screen' : 'Full screen'; });
+</script>
+<script>
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = -1, b = 1) => Math.max(a, Math.min(b, v));
+const params = new URLSearchParams(location.search);
+$('room').value = (params.get('room') || sessionStorage.getItem('croom') || '').toUpperCase().slice(0, 4);
+
+const MAX_STEP = 0.2;   // output can change by at most this much per 20 ms tick (resists sudden jumps)
+let FULL_TILT = 30, DEAD = 0.06, SMOOTH = 0.4;   // degrees for full speed / dead zone / smoothing, adjustable under Tuning
+const saved = (() => { try { return JSON.parse(localStorage.getItem('pgg.ctl')) || {}; } catch (e) { return {}; } })();
+if (Number.isFinite(saved.dz)) DEAD = clamp(saved.dz, 0, 0.15);
+if (Number.isFinite(saved.sm)) SMOOTH = clamp(saved.sm, 0.15, 0.8);
+if (Number.isFinite(saved.rg)) FULL_TILT = clamp(saved.rg, 15, 45);
+function syncTuning() {
+  $('dz').value = Math.round(DEAD * 100); $('dzVal').textContent = Math.round(DEAD * 100);
+  $('sm').value = SMOOTH; $('smVal').textContent = SMOOTH < 0.3 ? 'Very smooth' : SMOOTH < 0.55 ? 'Balanced' : 'Snappy';
+  $('rg').value = FULL_TILT; $('rgVal').textContent = FULL_TILT; $('pad').style.setProperty('--dz', DEAD);
+}
+function saveTuning() { try { localStorage.setItem('pgg.ctl', JSON.stringify({ dz: DEAD, sm: SMOOTH, rg: FULL_TILT })); } catch (e) {} syncTuning(); }
+$('dz').oninput = (e) => { DEAD = +e.target.value / 100; saveTuning(); };
+$('sm').oninput = (e) => { SMOOTH = +e.target.value; saveTuning(); };
+$('rg').oninput = (e) => { FULL_TILT = +e.target.value; saveTuning(); };
+syncTuning();
+let ws, retry = 0, room = '', connected = false;
+let mode = 'tilt', haveSensor = false, g0 = null, b0 = null, rawG = 0, rawB = 0, lastShake = 0;
+let touch = { x: 0, y: 0 }, sm = { x: 0, y: 0 }, started = false;
+
+function setErr(t) { $('err').textContent = t; }
+function setSensor(t) { $('sensor').textContent = 'Motion sensor: ' + t; }
+function setMode(m) {
+  mode = m; $('mode').textContent = m === 'tilt' ? 'Tilt' : 'Touch pad';
+  $('pad').classList.toggle('touch', m === 'touch');
+  $('modeBtn').textContent = m === 'tilt' ? 'Use touch pad' : 'Use tilt';
+  $('modeBtn').disabled = false;
+  $('help').textContent = m === 'tilt' ? 'Hold the phone flat, tap Calibrate, then tilt to move. Shake for a speed boost.' : 'Drag your finger inside the box to steer. The centre is neutral.';
+  touch = { x: 0, y: 0 };
+  $('padHint').textContent = m === 'tilt' ? 'Hold the phone flat, tap Calibrate, then tilt' : 'Drag your finger inside this box to steer';
+}
+
+$('go').onclick = async () => {
+  room = $('room').value.trim().toUpperCase();
+  if (!/^[A-Z0-9]{4}$/.test(room)) { setErr('Enter the 4-character code shown on your laptop.'); return; }
+  setErr(''); sessionStorage.setItem('croom', room);
+  $('roomChip').textContent = 'ROOM ' + room;
+  $('setup').hidden = true; $('live').hidden = false;
+  started = true; setMode('tilt'); $('modeBtn').disabled = false;
+
+  let reason = '';
+  if (!window.isSecureContext) reason = 'Tilt needs an HTTPS link. Using the touch pad.';
+  else if (typeof DeviceOrientationEvent === 'undefined') reason = 'This browser has no motion sensor support. Using the touch pad.';
+  else {
+    try {   // iOS asks for permission, and only from a tap
+      for (const API of [DeviceOrientationEvent, window.DeviceMotionEvent]) {
+        if (API && typeof API.requestPermission === 'function' && (await API.requestPermission()) !== 'granted') { reason = 'Motion access was denied. Using the touch pad. (To fix: close this tab, reopen the link and tap Allow.)'; break; }
+      }
+    } catch (e) { reason = 'Could not enable motion sensors. Using the touch pad.'; }
+  }
+  if (reason) { setSensor('unavailable'); setMode('touch'); $('help').textContent = reason + ' Drag inside the box to steer.'; }
+  else {
+    addEventListener('deviceorientation', onOrient);
+    addEventListener('devicemotion', onMotion);
+    setTimeout(() => { if (!haveSensor && mode === 'tilt') { setSensor('no data received'); setMode('touch'); $('help').textContent = 'No motion data from this device. Using the touch pad. Drag inside the box to steer.'; } }, 2500);
+  }
+  try { if (navigator.wakeLock) navigator.wakeLock.request('screen').catch(() => {}); } catch (e) {}   // keep the screen awake
+  open();
+};
+
+// ---- connection ----
+function open() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => { retry = 0; ws.send(JSON.stringify({ t: 'join', code: room })); setStatus(false, 'Joining room ' + room + '...'); };
+  ws.onclose = () => { connected = false; setStatus(false, 'Connection lost, reconnecting...'); setTimeout(open, Math.min(500 * 2 ** retry++, 5000)); };
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.t === 'joined') { connected = true; setStatus(true, 'Connected (room ' + room + ')'); if (navigator.vibrate) navigator.vibrate(40); }
+    else if (m.t === 'error') { setStatus(false, String(m.msg || 'Error')); setTimeout(() => ws.close(), 2000); }   // retry; laptop may not be up yet
+    else if (m.t === 'hostStatus') { connected = !!m.connected; setStatus(connected, connected ? 'Connected (room ' + room + ')' : 'Computer disconnected, waiting...'); }
+    else if (m.t === 'vibrate' && navigator.vibrate && Number.isFinite(m.ms)) navigator.vibrate(clamp(m.ms, 0, 1000));
+    else if (m.t === 'pong') { const ms = performance.now() - m.ts; if (ms >= 0 && ms < 60000) { $('lat').textContent = Math.round(ms); send({ t: 'lat', ms }); } }
+  };
+}
+function setStatus(ok, text) { $('dotConn').classList.toggle('on', ok); $('banner').classList.toggle('ok', ok); $('status').textContent = text; }
+function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); }
+
+// ---- sensors ----
+function screenAngle() {   // 0 = portrait; rotate the axes so tilt still means left/right/up/down in landscape
+  if (screen.orientation && typeof screen.orientation.angle === 'number') return screen.orientation.angle;
+  return ((-(window.orientation || 0)) + 360) % 360;
+}
+function onOrient(e) {
+  if (e.gamma == null || e.beta == null) return;
+  rawG = e.gamma; rawB = e.beta;
+  if (!haveSensor) { haveSensor = true; setSensor('active'); }
+  if (g0 === null) { g0 = rawG; b0 = rawB; }                  // auto-calibrate on first reading
+}
+addEventListener('orientationchange', () => { g0 = null; });   // re-neutralise after rotating the phone
+function onMotion(e) {
+  const a = e.accelerationIncludingGravity; if (!a) return;
+  const mag = Math.hypot(a.x || 0, a.y || 0, a.z || 0), now = performance.now();
+  if (mag > 25 && now - lastShake > 700) { lastShake = now; send({ t: 'shake' }); if (navigator.vibrate) navigator.vibrate(30); }
+}
+$('cal').onclick = () => { g0 = rawG; b0 = rawB; if (navigator.vibrate) navigator.vibrate(20); };
+$('modeBtn').onclick = () => { if (mode === 'touch' && haveSensor) setMode('tilt'); else if (mode === 'touch') $('help').textContent = 'No working motion sensor on this device.'; else setMode('touch'); };
+
+
+// ---- touch pad ----
+const pad = $('pad');
+function padPos(e) { const r = pad.getBoundingClientRect(); return { x: clamp(((e.clientX - r.left) / r.width - 0.5) * 2), y: clamp(((e.clientY - r.top) / r.height - 0.5) * 2) }; }
+pad.addEventListener('pointerdown', (e) => { if (mode !== 'touch') return; pad.setPointerCapture(e.pointerId); touch = padPos(e); });
+pad.addEventListener('pointermove', (e) => { if (mode === 'touch' && pad.hasPointerCapture(e.pointerId)) touch = padPos(e); });
+for (const ev of ['pointerup', 'pointercancel']) pad.addEventListener(ev, () => { touch = { x: 0, y: 0 }; });
+
+// ---- send loop: every 20 ms compute the steering value; send only when it changed, plus a 250 ms heartbeat ----
+let lastX = null, lastY = null, lastSent = 0;
+setInterval(() => {
+  if (!started) return;
+  let tx = 0, ty = 0;
+  if (mode === 'touch') { tx = touch.x; ty = touch.y; }
+  else if (haveSensor && g0 !== null) {
+    const dg = rawG - g0, db = rawB - b0, a = screenAngle();
+    let dx = dg, dy = db;
+    if (a === 90) { dx = db; dy = -dg; } else if (a === 180) { dx = -dg; dy = -db; } else if (a === 270) { dx = -db; dy = dg; }
+    tx = PGG.deadzone(clamp(dx / FULL_TILT), DEAD); ty = PGG.deadzone(clamp(dy / FULL_TILT), DEAD);
+  }
+  sm.x = PGG.smoothStep(sm.x, tx, SMOOTH, MAX_STEP); sm.y = PGG.smoothStep(sm.y, ty, SMOOTH, MAX_STEP);
+  if (Math.abs(sm.x) < 0.002) sm.x = 0; if (Math.abs(sm.y) < 0.002) sm.y = 0;
+  $('dot').style.transform = `translate(${sm.x * (pad.clientWidth / 2 - 14)}px, ${sm.y * (pad.clientHeight / 2 - 14)}px)`;
+  const x = +sm.x.toFixed(3), y = +sm.y.toFixed(3), now = performance.now();
+  if (connected && (x !== lastX || y !== lastY || now - lastSent > 250)) { lastX = x; lastY = y; lastSent = now; send({ t: 'tilt', x, y }); }
+}, 20);
+setInterval(() => { if (started) send({ t: 'ping', ts: performance.now() }); }, 1000);
+</script>
+</body>
+</html>
