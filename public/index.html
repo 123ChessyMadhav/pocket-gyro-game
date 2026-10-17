@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pocket Gyro Game</title>
+<style>
+  :root { --slate:#1f2a33; --panel:#2b3945; --walnut:#5c3d2e; --felt:#2f5d50; --brass:#d4a72c; --crimson:#b3261e; --chalk:#eef1f3; --muted:#b7c2ca; --ok:#4cc38a; }
+  * { box-sizing:border-box; }
+  body { margin:0; min-height:100vh; background:radial-gradient(circle at 50% -10%, #2d3d4a, var(--slate) 60%); color:var(--chalk); font:16px/1.4 system-ui, sans-serif;
+         display:flex; flex-direction:column; align-items:center; gap:12px; padding:16px; }
+  header, .tools { width:min(940px,100%); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; }
+  h1 { margin:0; font:700 clamp(22px,4vw,28px)/1 Georgia, serif; letter-spacing:.5px; }
+  .stats { display:flex; gap:18px; font-variant-numeric:tabular-nums; }
+  .stats div { font-size:13px; color:var(--muted); } .stats b { font-size:22px; display:block; color:var(--chalk); }
+  .pill { padding:5px 12px; border-radius:99px; background:#33424f; font-size:14px; display:inline-flex; gap:8px; align-items:center; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--crimson); } .dot.on { background:var(--ok); }
+  .tools { font-size:14px; color:var(--muted); justify-content:flex-start; gap:18px; }
+  .tools input[type=range] { accent-color:var(--brass); vertical-align:middle; }
+  .board { position:relative; padding:14px; background:var(--walnut); border-radius:14px; box-shadow:0 14px 40px #0006; max-width:100%; }
+  canvas { display:block; background:var(--felt); border-radius:6px; max-width:100%; height:auto; }
+  .overlay { position:absolute; inset:14px; display:flex; flex-direction:column; align-items:center; justify-content:center; justify-content:safe center;
+             gap:12px; background:#1f2a33ee; border-radius:6px; text-align:center; padding:18px; overflow:auto;
+             opacity:1; transition:opacity .25s ease, visibility .25s; }
+  .overlay.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+  #title { background:#1f2a33b8; }
+  .logo { font:700 clamp(34px,7vw,60px)/1 Georgia, serif; letter-spacing:3px; } .logo span { color:var(--brass); }
+  .tag { margin:0; color:var(--muted); max-width:460px; }
+  .seg { display:inline-flex; border:2px solid #4a5b69; border-radius:10px; overflow:hidden; }
+  .seg button { background:transparent; color:var(--chalk); border-radius:0; padding:8px 16px; font-weight:600; }
+  .seg button[aria-checked="true"] { background:var(--brass); color:#2a2000; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; }
+  #qr { background:#fff; padding:10px; border-radius:8px; min-height:60px; min-width:60px; }
+  .code { font:700 clamp(32px,6vw,44px)/1 ui-monospace, Menlo, monospace; letter-spacing:10px; color:var(--brass); }
+  .hint { color:var(--muted); max-width:440px; }
+  .steps { text-align:left; max-width:470px; margin:0; padding-left:22px; color:#cdd6dc; } .steps li { margin:6px 0; }
+  .big { font:700 clamp(70px,14vw,120px)/1 Georgia, serif; color:var(--brass); }
+  .grid { display:grid; grid-template-columns:repeat(5, minmax(60px,1fr)); gap:8px 14px; font-size:13px; color:var(--muted); }
+  .grid b { display:block; font-size:22px; color:var(--chalk); }
+  .lb { margin:0; padding:0; list-style:none; font-size:14px; color:var(--muted); min-width:260px; text-align:left; }
+  .lb li { display:flex; justify-content:space-between; gap:16px; padding:2px 0; } .lb li.me { color:var(--brass); font-weight:700; }
+  .lbh { font-size:12px; letter-spacing:2px; text-transform:uppercase; color:var(--muted); }
+  .caption { position:absolute; left:14px; right:14px; bottom:14px; padding:12px 16px; background:#1f2a33dd; border-radius:0 0 6px 6px; display:flex; justify-content:space-between; align-items:center; gap:12px; transition:opacity .25s, visibility .25s; }
+  .caption.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+  button { font:inherit; padding:10px 20px; border:0; border-radius:8px; background:var(--brass); color:#2a2000; font-weight:700; cursor:pointer; }
+  button.ghost { background:#4a5b69; color:var(--chalk); } button.small { padding:6px 14px; font-size:14px; }
+  button:hover { filter:brightness(1.1); } button:focus-visible, input:focus-visible { outline:3px solid #fff; outline-offset:2px; }
+  canvas:focus { outline:none; }
+  .kbhint { position:absolute; left:14px; right:14px; top:14px; padding:10px 14px; background:#b3261ee6; color:#fff; border-radius:6px; text-align:center; font-weight:600; transition:opacity .25s, visibility .25s; z-index:5; }
+  .kbhint.hidden { opacity:0; visibility:hidden; pointer-events:none; }
+  #diag { position:absolute; right:22px; bottom:22px; margin:0; padding:8px 10px; background:#000b; color:#9fe8b8; font:12px/1.35 ui-monospace, Menlo, monospace; border-radius:6px; z-index:6; pointer-events:none; }
+  #diag.hidden { display:none; }
+  .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); }
+  .status { color:var(--muted); font-size:14px; }
+  @media (max-width:640px) { .code { letter-spacing:6px; } .grid { grid-template-columns:repeat(3, 1fr); } body { padding:10px; } .board { padding:8px; } .overlay { inset:8px; padding:12px; gap:8px; } }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition:none !important; animation:none !important; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Pocket Gyro Game</h1>
+  <div class="stats" aria-label="Game stats">
+    <div>Score<b id="score">0</b></div><div>Level<b id="level">1</b></div><div>Time<b id="time">60</b></div><div>Best<b id="best">0</b></div>
+  </div>
+  <div class="row">
+    <span class="pill"><span class="dot" id="wsDot"></span><span id="wsText">Connecting to server</span></span>
+    <span class="pill"><span class="dot" id="phDot"></span><span id="phText">No phone</span></span>
+    <span class="pill">Latency <b id="lat">--</b> ms</span>
+  </div>
+</header>
+
+<div class="tools">
+  <label>Sensitivity <input id="sens" type="range" min="0.5" max="2" step="0.1" value="1"> <span id="sensVal">1.0</span></label>
+  <label><input id="mute" type="checkbox"> Mute</label>
+  <label><input id="fx" type="checkbox"> Reduce effects</label>
+  <button class="small ghost" id="pauseBtn">Pause (P)</button>
+  <span id="modeLabel" class="status"></span>
+</div>
+
+<div class="board">
+  <canvas id="c" width="900" height="540" tabindex="0" role="img" aria-label="Game board: roll the ball into gold coins and avoid red blocks"></canvas>
+
+  <div class="overlay" id="title">
+    <div class="logo">POCKET<span>GYRO</span></div>
+    <p class="tag">Your phone is the controller. Tilt it to roll the ball, grab the coins, dodge the blocks.</p>
+    <div class="seg" role="radiogroup" aria-label="Difficulty">
+      <button role="radio" aria-checked="false" data-diff="easy">Easy</button>
+      <button role="radio" aria-checked="true" data-diff="normal">Normal</button>
+      <button role="radio" aria-checked="false" data-diff="hard">Hard</button>
+    </div>
+    <div class="seg" role="radiogroup" aria-label="Mode">
+      <button role="radio" aria-checked="true" data-mode="classic">Classic</button>
+      <button role="radio" aria-checked="false" data-mode="practice">Practice (no timer)</button>
+    </div>
+    <div class="row">
+      <button id="btnPhone" data-primary>Connect phone</button>
+      <button class="ghost" id="btnKb">Play with keyboard</button>
+      <button class="ghost" id="btnDemo">Watch demo</button>
+    </div>
+    <div><div class="lbh">Top scores on this device</div><ol class="lb" id="lbTitle"></ol></div>
+  </div>
+
+  <div class="overlay hidden" id="pair">
+    <div id="qr"></div>
+    <div class="code" id="code" aria-live="polite">----</div>
+    <div class="hint">Scan the QR code with your phone, or open <b id="url"></b> on it and type the code.</div>
+    <div class="status" id="netHint"></div>
+    <div class="status" id="pairNote"></div>
+    <button class="ghost" id="pairBack">Back</button>
+  </div>
+
+  <div class="overlay hidden" id="ready">
+    <h2 style="margin:0">Phone connected</h2>
+    <ol class="steps">
+      <li>Hold the phone flat and tap <b>Calibrate</b> on it.</li>
+      <li>Tilt to roll the ball into the <b style="color:#d4a72c">gold coins</b>. Quick pickups build a combo up to x5.</li>
+      <li>Avoid the <b style="color:#ff8a80">red blocks</b>. Every few coins starts a new level. Shake the phone for a speed boost.</li>
+    </ol>
+    <div class="row"><button id="start" data-primary>Start game</button><button class="ghost" id="readyBack">Back</button></div>
+  </div>
+
+  <div class="overlay hidden" id="count"><div class="hint">Get ready</div><div class="big" id="countNum">3</div></div>
+
+  <div class="overlay hidden" id="pause">
+    <h2 style="margin:0" id="pauseMsg">Paused</h2>
+    <div class="status" id="pauseHint">Press P or Esc to resume</div>
+    <div class="row"><button id="resume" data-primary>Resume</button><button class="ghost" id="quit">Quit to menu</button></div>
+  </div>
+
+  <div class="overlay hidden" id="over">
+    <h2 style="margin:0" id="overTitle">Time's up</h2>
+    <div class="logo" style="font-size:44px" id="finalScore">0</div>
+    <div class="status" id="overMsg"></div>
+    <div class="grid">
+      <div>Level<b id="sLevel">1</b></div><div>Coins<b id="sCoins">0</b></div><div>Best combo<b id="sCombo">0</b></div><div>Hits<b id="sHits">0</b></div><div>Boosts<b id="sBoosts">0</b></div>
+    </div>
+    <ol class="lb" id="lbOver"></ol>
+    <div class="row"><button id="again" data-primary>Play again</button><button class="ghost" id="menu">Menu</button></div>
+  </div>
+
+  <div class="kbhint hidden" id="kbHint" role="status"></div>
+  <pre id="diag" class="hidden"></pre>
+  <div class="caption hidden" id="demoCap"><span id="capText"></span><button class="small ghost" id="demoExit">Exit demo</button></div>
+</div>
+<div class="sr" id="live" aria-live="polite"></div>
+
+<script src="logic.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const { DIFFICULTY, clamp, sanitizeBoard, addScore, sanitizeBests, autopilot, stepBall } = PGG;
+const W = 900, H = 540, R = 14;
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const $ = (id) => document.getElementById(id);
+const rnd = (a, b) => a + Math.random() * (b - a);
+const store = { get: (k) => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} } };
+
+// ---------- settings ----------
+let sens = +store.get('pgg.sens') || 1, muted = store.get('pgg.muted') === '1';
+let reduce = store.get('pgg.fx') ? store.get('pgg.fx') === '1' : matchMedia('(prefers-reduced-motion: reduce)').matches;
+$('sens').value = sens; $('sensVal').textContent = sens.toFixed(1); $('mute').checked = muted; $('fx').checked = reduce;
+$('sens').oninput = (e) => { sens = +e.target.value; $('sensVal').textContent = sens.toFixed(1); store.set('pgg.sens', sens); };
+$('mute').onchange = (e) => { muted = e.target.checked; store.set('pgg.muted', muted ? '1' : '0'); };
+$('fx').onchange = (e) => { reduce = e.target.checked; store.set('pgg.fx', reduce ? '1' : '0'); };
+
+// ---------- sound (WebAudio beeps, no asset files) ----------
+let actx, quiet = false;
+function unlockAudio() { try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) {} }
+addEventListener('pointerdown', unlockAudio); addEventListener('keydown', unlockAudio);
+function tone(freq, dur = 0.09, type = 'sine', vol = 0.08) {
+  if (muted || quiet || !actx) return;
+  const o = actx.createOscillator(), g = actx.createGain(), t = actx.currentTime;
+  o.type = type; o.frequency.value = freq; g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(actx.destination); o.start(t); o.stop(t + dur);
+}
+const announce = (msg) => { if (!quiet) $('live').textContent = msg; };
+
+// ---------- connection (auto-reconnect, keeps the same room code) ----------
+let ws, retry = 0, roomCode = sessionStorage.getItem('room') || '';
+let phoneOn = false, lastTilt = 0;
+const tilt = { x: 0, y: 0 };
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  ws = new WebSocket(`${proto}://${location.host}`);
+  ws.onopen = () => { retry = 0; $('wsDot').classList.add('on'); $('wsText').textContent = 'Server connected'; $('pairNote').textContent = ''; ws.send(JSON.stringify({ t: 'host', code: roomCode })); };
+  ws.onclose = () => {
+    $('wsDot').classList.remove('on'); $('wsText').textContent = 'Reconnecting...'; $('pairNote').textContent = 'Cannot reach the server. Retrying...';
+    setPhone(false); setTimeout(connect, Math.min(500 * 2 ** retry++, 5000));
+  };
+  ws.onmessage = (e) => {
+    let m; try { m = JSON.parse(e.data); } catch (err) { return; }
+    if (m.t === 'room') {
+      roomCode = m.code; sessionStorage.setItem('room', roomCode); $('code').textContent = roomCode;
+      const isLocal = /^(localhost|127\.|\[?::1)/.test(location.hostname);
+      const base = isLocal && Array.isArray(m.lan) && m.lan.length ? m.lan[0] : location.origin;     // a phone cannot reach "localhost"
+      $('url').textContent = `${base.replace(/^https?:\/\//, '')}/controller.html`; $('qr').innerHTML = '';
+      $('netHint').textContent = isLocal ? (m.lan && m.lan.length ? 'Phone and Mac must be on the same Wi-Fi. Over http the phone uses its touch pad; for motion sensing open the app through an https link (see README).' : 'No Wi-Fi address found. Connect the Mac to Wi-Fi, or use an https tunnel (see README).') : '';
+      if (window.QRCode) new QRCode($('qr'), { text: `${base}/controller.html?room=${roomCode}`, width: 170, height: 170 });
+      else $('qr').textContent = 'QR code unavailable offline. Type the code on your phone.';
+      setPhone(m.phone);
+    } else if (m.t === 'phone') setPhone(m.connected);
+    else if (m.t === 'tilt') { if (Number.isFinite(m.x) && Number.isFinite(m.y)) { tilt.x = clamp(m.x, -1.5, 1.5); tilt.y = clamp(m.y, -1.5, 1.5); lastTilt = performance.now(); } }
+    else if (m.t === 'shake') onShake();
+    else if (m.t === 'lat') $('lat').textContent = Math.round(m.ms);
+    else if (m.t === 'ping') ws.send(JSON.stringify({ t: 'pong', ts: m.ts }));
+    else if (m.t === 'error') $('pairNote').textContent = String(m.msg || 'Server error');
+  };
+}
+const buzz = (ms) => { if (!quiet && ws && ws.readyState === 1) ws.send(JSON.stringify({ t: 'vibrate', ms })); };
+function setPhone(on) {
+  phoneOn = on; $('phDot').classList.toggle('on', on); $('phText').textContent = on ? 'Phone connected' : 'No phone';
+  if (on) { if (state === 'pair') show('ready'); else if (state === 'pause' && pausedBy === 'phone') resume(); }
+  else { tilt.x = tilt.y = 0; $('lat').textContent = '--'; if (state === 'play' && !kbMode) pause('phone'); else if (state === 'ready') show('pair'); }
+}
+
+// ---------- state ----------
+const OVERLAYS = ['title', 'pair', 'ready', 'count', 'pause', 'over'];
+let state = 'title', kbMode = false, pausedBy = '', countT = 0, countShown = 0, lastT = 0;
+let selDiff = 'normal', selMode = 'classic';
+let cfg = DIFFICULTY.normal, practice = false;
+let score = 0, timeLeft = 60, level = 1, collected = 0, combo = 0, comboT = 0, boost = 0, hitCd = 0, shakeT = 0, bannerT = 0, stats = {};
+let ball, coins = [], blocks = [], parts = [];
+const lastInput = { x: 0, y: 0 };
+let playT = 0, keysThisGame = 0, keyTotal = 0, lastKey = '-', lastKeyAt = 0, debugOn = /[?&]debug/.test(location.search), focusCheckT = 0;
+let bests = sanitizeBests(store.get('pgg.bests')), board = sanitizeBoard(store.get('pgg.board'));
+const today = () => new Date().toISOString().slice(0, 10);
+
+function show(name) {
+  state = name;
+  OVERLAYS.forEach((id) => $(id).classList.toggle('hidden', id !== name));
+  $('demoCap').classList.toggle('hidden', name !== 'demo');
+  if (name === 'count' || name === 'play') {       // hand keyboard focus to the game so a hidden button can never hold it
+    if (document.activeElement && document.activeElement !== document.body && document.activeElement.blur) document.activeElement.blur();
+    cv.focus({ preventScroll: true });
+  } else {
+    const first = $(name) && $(name).querySelector && $(name).querySelector('[data-primary]');
+    if (first) setTimeout(() => first.focus({ preventScroll: true }), 30);
+  }
+  $('modeLabel').textContent = (name === 'title' || name === 'demo') ? '' : `${cfg.label}${practice ? ' | Practice' : ''}`;
+}
+function renderBoard(el, rank) {
+  el.textContent = '';
+  if (!board.length) { const li = document.createElement('li'); li.textContent = 'No scores yet. Be the first!'; el.appendChild(li); return; }
+  board.forEach((e, i) => {
+    const li = document.createElement('li'); if (rank === i + 1) li.className = 'me';
+    const a = document.createElement('span'), b = document.createElement('span');
+    a.textContent = `${i + 1}. ${e.score} pts`; b.textContent = `${DIFFICULTY[e.diff].label} | Lvl ${e.level}${e.date ? ' | ' + e.date : ''}`;
+    li.append(a, b); el.appendChild(li);
+  });
+}
+function selectSeg(attr, value) {
+  document.querySelectorAll(`[data-${attr}]`).forEach((b) => b.setAttribute('aria-checked', String(b.dataset[attr] === value)));
+}
+document.querySelectorAll('[data-diff]').forEach((b) => b.onclick = () => { selDiff = b.dataset.diff; selectSeg('diff', selDiff); cfg = DIFFICULTY[selDiff]; });
+document.querySelectorAll('[data-mode]').forEach((b) => b.onclick = () => { selMode = b.dataset.mode; selectSeg('mode', selMode); });
+
+// ---------- game setup ----------
+const spawnCoin = () => ({ x: rnd(40, W - 40), y: rnd(40, H - 40) });
+function addBlock() {
+  let x, y, tries = 0;
+  do { x = rnd(20, W - 70); y = rnd(20, H - 70); } while (Math.hypot(x - ball.x, y - ball.y) < 160 && ++tries < 30);
+  blocks.push({ x, y, w: 46, h: 46, vx: rnd(-1.4, 1.4) || 1, vy: rnd(-1.4, 1.4) || -1 });
+}
+function reset(diffKey, isPractice) {
+  cfg = DIFFICULTY[diffKey]; practice = isPractice;
+  score = 0; timeLeft = isPractice ? Infinity : cfg.time; level = 1; collected = 0; combo = 0; comboT = 0; boost = 0; hitCd = 0; shakeT = 0; bannerT = 0; parts = [];
+  stats = { coins: 0, hits: 0, maxCombo: 0, boosts: 0 };
+  ball = { x: W / 2, y: H / 2, vx: 0, vy: 0 }; coins = Array.from({ length: 5 }, spawnCoin);
+  blocks = []; for (let i = 0; i < cfg.blocks; i++) addBlock();
+}
+function startGame() { keysThisGame = 0; playT = 0; kbMode = !phoneOn; reset(selDiff, selMode === 'practice'); lastT = performance.now(); countT = 3; countShown = 0; show('count'); }
+function toTitle() { reset('normal', false); show('title'); renderBoard($('lbTitle'), 0); }
+function pause(by) {
+  if (state !== 'play') return; pausedBy = by;
+  $('pauseMsg').textContent = by === 'phone' ? 'Phone disconnected. Reconnecting...' : by === 'focus' ? 'Click to continue' : 'Paused';
+  $('pauseHint').textContent = by === 'phone' ? 'The game resumes when the phone reconnects, or play with the keyboard.' : by === 'focus' ? 'The browser window lost keyboard focus (another window, the address bar or DevTools has it).' : 'Press P or Esc to resume';
+  show('pause');
+}
+function resume() { if (state === 'pause') { pausedBy = ''; lastT = performance.now(); show('play'); } }
+const togglePause = () => { if (state === 'play') pause('user'); else if (state === 'pause') resume(); };
+
+$('btnPhone').onclick = () => show(phoneOn ? 'ready' : 'pair');
+$('btnKb').onclick = startGame; $('start').onclick = startGame; $('again').onclick = startGame;
+$('pairBack').onclick = toTitle; $('readyBack').onclick = toTitle; $('menu').onclick = toTitle; $('quit').onclick = toTitle;
+$('resume').onclick = resume; $('pauseBtn').onclick = togglePause;
+
+// ---------- demo mode: the game plays itself, no phone needed ----------
+const CAPTIONS = ['Demo: tilting the phone rolls the ball.', 'Gold coins score points. Quick pickups build a combo up to x5.', 'Red blocks cost points and break the combo.', 'More coins means a new level: faster blocks and bonus time.'];
+let capI = 0, capT = 0;
+function startDemo() { reset('normal', false); capI = 0; capT = 0; $('capText').textContent = CAPTIONS[0]; show('demo'); }
+$('btnDemo').onclick = startDemo; $('demoExit').onclick = toTitle;
+
+// ---------- input ----------
+const down = new Set();
+const isDown = (...c) => c.some((k) => down.has(k));
+addEventListener('keydown', (e) => {
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code) && !(e.target && e.target.tagName === 'BUTTON')) e.preventDefault();
+  down.add(e.code); keysThisGame++; keyTotal++; lastKey = e.code; lastKeyAt = performance.now();
+  if (e.code === 'Backquote') { debugOn = !debugOn; return; }                 // ` toggles the diagnostics panel
+  if (e.code === 'KeyP' || e.code === 'Escape') { if (state === 'demo') toTitle(); else togglePause(); }
+  if (e.code === 'Space' && (state === 'ready' || state === 'over')) startGame();
+}, true);   // capture phase: nothing on the page can swallow game keys
+addEventListener('keyup', (e) => down.delete(e.code), true);
+addEventListener('blur', () => down.clear());
+addEventListener('focus', () => { if (state === 'pause' && pausedBy === 'focus') resume(); });
+addEventListener('pointerdown', (e) => { if (state === 'play' && e.target && e.target.tagName !== 'BUTTON' && e.target.tagName !== 'INPUT') cv.focus({ preventScroll: true }); });
+function onShake() {
+  if (state === 'play') { boost = 0.6; stats.boosts++; tone(300, 0.12, 'triangle'); }
+  else if (state === 'over' || state === 'ready') startGame();
+}
+
+// ---------- simulation ----------
+function burst(x, y, col, n = 10) {
+  if (reduce) return;
+  for (let i = 0; i < n; i++) { const a = rnd(0, 6.28), v = rnd(60, 220); parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 0.5, col }); }
+}
+function levelUp() {
+  level++; bannerT = 1.5; if (!practice) timeLeft += cfg.bonus; if (blocks.length < cfg.max) addBlock();
+  tone(660, 0.12); if (!quiet) setTimeout(() => tone(880, 0.16), 120); buzz(80); announce(`Level ${level}`);
+}
+function update(dt, demo) {
+  if (!demo) playT += dt;
+  let ax, ay;
+  if (demo) { const p = autopilot(ball, coins, blocks); ax = p.x; ay = p.y; }
+  else {
+    const fresh = performance.now() - lastTilt < 1000;     // stale phone input is ignored
+    ax = fresh ? tilt.x * sens : 0; ay = fresh ? tilt.y * sens : 0;
+    ax += (isDown('ArrowRight', 'KeyD') ? 1 : 0) - (isDown('ArrowLeft', 'KeyA') ? 1 : 0);
+    ay += (isDown('ArrowDown', 'KeyS') ? 1 : 0) - (isDown('ArrowUp', 'KeyW') ? 1 : 0);
+  }
+  ax = clamp(ax, -1.5, 1.5); ay = clamp(ay, -1.5, 1.5);
+  lastInput.x = ax; lastInput.y = ay;
+  stepBall(ball, ax, ay, dt, boost > 0, W, H, R);
+  boost = Math.max(0, boost - dt); hitCd = Math.max(0, hitCd - dt); shakeT = Math.max(0, shakeT - dt); bannerT = Math.max(0, bannerT - dt);
+  comboT = Math.max(0, comboT - dt); if (comboT === 0) combo = 0;
+
+  coins.forEach((c, i) => {
+    if (Math.hypot(c.x - ball.x, c.y - ball.y) < R + 11) {
+      combo = comboT > 0 ? Math.min(combo + 1, 5) : 1; comboT = 2.5;
+      score += combo; collected++; stats.coins++; stats.maxCombo = Math.max(stats.maxCombo, combo);
+      burst(c.x, c.y, '#d4a72c'); tone(500 + combo * 90); buzz(40); coins[i] = spawnCoin();
+      if (collected % cfg.perLevel === 0) levelUp();
+    }
+  });
+  const spd = 60 * cfg.speed * (1 + 0.1 * (level - 1));
+  for (const b of blocks) {
+    b.x += b.vx * spd * dt; b.y += b.vy * spd * dt;
+    if (b.x < 0) { b.x = 0; b.vx = Math.abs(b.vx); } if (b.x + b.w > W) { b.x = W - b.w; b.vx = -Math.abs(b.vx); }
+    if (b.y < 0) { b.y = 0; b.vy = Math.abs(b.vy); } if (b.y + b.h > H) { b.y = H - b.h; b.vy = -Math.abs(b.vy); }
+    const nx = clamp(ball.x, b.x, b.x + b.w), ny = clamp(ball.y, b.y, b.y + b.h);
+    if (hitCd === 0 && Math.hypot(nx - ball.x, ny - ball.y) < R) {
+      if (!practice) score = Math.max(0, score - cfg.penalty);
+      combo = 0; comboT = 0; hitCd = 1; shakeT = reduce ? 0 : 0.3; stats.hits++;
+      burst(ball.x, ball.y, '#ff8a80', 14); tone(110, 0.25, 'sawtooth', 0.1); buzz(250);
+      ball.vx *= -1.2; ball.vy *= -1.2;
+    }
+  }
+  for (const p of parts) { p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt; }
+  parts = parts.filter((p) => p.life > 0);
+  if (!practice) { timeLeft -= dt; if (timeLeft <= 0) { if (demo) reset('normal', false); else finish(); } }
+}
+function finish() {
+  timeLeft = 0;
+  const newBest = score > bests[selDiff]; if (newBest) { bests[selDiff] = score; store.set('pgg.bests', JSON.stringify(bests)); }
+  let rank = 0;
+  if (score > 0) { const r = addScore(board, { score, level, diff: selDiff, date: today() }); board = r.board; rank = r.rank; store.set('pgg.board', JSON.stringify(board)); }
+  $('finalScore').textContent = `${score} pts`; $('sLevel').textContent = level; $('sCoins').textContent = stats.coins; $('sCombo').textContent = 'x' + stats.maxCombo; $('sHits').textContent = stats.hits; $('sBoosts').textContent = stats.boosts;
+  $('overMsg').textContent = newBest ? `New personal best on ${cfg.label}!` : (rank ? `Leaderboard rank #${rank}` : `Personal best on ${cfg.label}: ${bests[selDiff]}`);
+  renderBoard($('lbOver'), rank); show('over'); tone(220, 0.4, 'triangle'); buzz(500); announce(`Time is up. Score ${score}.`);
+}
+
+// ---------- drawing ----------
+function draw(now) {
+  ctx.save();
+  if (shakeT > 0) ctx.translate(rnd(-5, 5), rnd(-5, 5));
+  ctx.clearRect(-10, -10, W + 20, H + 20);
+  ctx.strokeStyle = '#ffffff12'; ctx.lineWidth = 1;
+  for (let x = 0; x <= W; x += 45) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y <= H; y += 45) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+  if (ball) {
+    for (const c of coins) {
+      const pr = reduce ? 0 : Math.sin(now / 220 + c.x) * 1.5;
+      ctx.fillStyle = '#d4a72c'; ctx.beginPath(); ctx.arc(c.x, c.y, 11 + pr, 0, 7); ctx.fill(); ctx.strokeStyle = '#8a6a10'; ctx.lineWidth = 2; ctx.stroke();
+    }
+    for (const b of blocks) { ctx.fillStyle = '#b3261e'; ctx.fillRect(b.x, b.y, b.w, b.h); ctx.strokeStyle = '#ff8a80'; ctx.lineWidth = 2; ctx.strokeRect(b.x + 1, b.y + 1, b.w - 2, b.h - 2); }
+    for (const p of parts) { ctx.globalAlpha = Math.max(0, p.life / 0.5); ctx.fillStyle = p.col; ctx.fillRect(p.x - 2, p.y - 2, 4, 4); }
+    ctx.globalAlpha = hitCd > 0 && Math.floor(now / 100) % 2 ? 0.4 : 1;
+    const g = ctx.createRadialGradient(ball.x - 4, ball.y - 4, 2, ball.x, ball.y, R);
+    g.addColorStop(0, '#fff'); g.addColorStop(1, boost > 0 ? '#7fd0ff' : '#9aa5b0');
+    ctx.fillStyle = g; ctx.beginPath(); ctx.arc(ball.x, ball.y, R, 0, 7); ctx.fill(); ctx.globalAlpha = 1;
+    ctx.font = '700 20px system-ui, sans-serif'; ctx.textAlign = 'center';
+    if (combo > 1 && state !== 'title') { ctx.fillStyle = '#d4a72c'; ctx.fillText(`Combo x${combo}`, W / 2, 30); }
+    if (bannerT > 0 && state !== 'title') { ctx.globalAlpha = Math.min(1, bannerT); ctx.font = '700 48px Georgia, serif'; ctx.fillStyle = '#eef1f3'; ctx.fillText(`Level ${level}`, W / 2, H / 2 - 60); ctx.globalAlpha = 1; }
+  }
+  ctx.restore();
+}
+function hud() {
+  const idle = state === 'title' || state === 'demo' || state === 'pair' || state === 'ready';
+  $('score').textContent = idle ? '-' : score; $('level').textContent = idle ? '-' : level;
+  $('time').textContent = idle ? '-' : (practice ? '\u221E' : Math.ceil(timeLeft));
+  $('best').textContent = bests[selDiff];
+}
+function watchdog(dt) {
+  focusCheckT += dt;
+  if (focusCheckT > 0.25) {                                       // keyboard game: if the page loses focus, pause instead of silently ignoring keys
+    focusCheckT = 0;
+    if (state === 'play' && kbMode && !document.hasFocus()) pause('focus');
+  }
+  const needHint = state === 'play' && kbMode && keysThisGame === 0 && playT > 5;
+  $('kbHint').textContent = 'No keyboard input detected yet. Click the game board, and make sure the console/DevTools is not focused.';
+  $('kbHint').classList.toggle('hidden', !needHint);
+  const d = $('diag'); d.classList.toggle('hidden', !debugOn);
+  if (debugOn) {
+    const fresh = performance.now() - lastTilt < 1000;
+    d.textContent = [`state ${state}   kbMode ${kbMode}   practice ${practice}`, `page focus ${document.hasFocus()}   active ${document.activeElement && (document.activeElement.id || document.activeElement.tagName)}`,
+      `keys down [${[...down].join(', ')}]`, `last key ${lastKey} (${lastKeyAt ? Math.round(performance.now() - lastKeyAt) + ' ms ago' : 'never'})   total ${keyTotal}`,
+      `input x ${lastInput.x.toFixed(2)}  y ${lastInput.y.toFixed(2)}   phone fresh ${fresh}`, ball ? `ball x ${ball.x | 0} y ${ball.y | 0}  vx ${ball.vx | 0} vy ${ball.vy | 0}` : '',
+      `ws ${ws ? ['connecting', 'open', 'closing', 'closed'][ws.readyState] : '-'}   room ${roomCode || '-'}   phone ${phoneOn}`].join('\n');
+  }
+}
+function loop(t) {
+  const dt = Math.min((t - lastT) / 1000, 0.05); lastT = t;
+  quiet = false;
+  if (state === 'count') {
+    countT -= dt; const n = Math.ceil(countT);
+    if (n > 0 && n !== countShown) { countShown = n; $('countNum').textContent = n; tone(440, 0.1); }
+    if (countT <= 0) { show('play'); tone(880, 0.18); if (!phoneOn && !kbMode) pause('phone'); }
+  }
+  if (state === 'play') update(dt, false);
+  else if (state === 'title' || state === 'demo') {
+    quiet = true; update(dt, true); quiet = false;
+    if (state === 'demo') { capT += dt; if (capT > 4) { capT = 0; capI = (capI + 1) % CAPTIONS.length; $('capText').textContent = CAPTIONS[capI]; } }
+  }
+  watchdog(dt); draw(t); hud(); requestAnimationFrame(loop);
+}
+reset('normal', false); renderBoard($('lbTitle'), 0); show('title'); connect(); requestAnimationFrame(loop);
+</script>
+</body>
+</html>
