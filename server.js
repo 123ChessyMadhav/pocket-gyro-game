@@ -1,56 +1,62 @@
-// Relay server: serves the game + controller pages and pairs phone <-> laptop by room code.
+// Relay server: serves the game + controller pages and pairs a phone with a laptop by 4-character room code.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
+const { parse } = require('./lib/validate');
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC = path.join(__dirname, 'public');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' };
+const MAX_ROOMS = 500, MAX_MSGS_PER_SEC = 200;
 
 const server = http.createServer((req, res) => {
-  let p = decodeURIComponent(req.url.split('?')[0]);
+  let p;
+  try { p = decodeURIComponent(req.url.split('?')[0]); } catch { res.writeHead(400); return res.end('Bad request'); }
+  if (p === '/healthz') { res.writeHead(200); return res.end('ok'); }
   if (p === '/') p = '/index.html';
+  const type = TYPES[path.extname(p)];
   const file = path.join(PUBLIC, path.normalize(p));
-  if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
+  if (!type || !file.startsWith(PUBLIC + path.sep)) { res.writeHead(404); return res.end('Not found'); }   // only html/js/css inside public/
   fs.readFile(file, (err, data) => {
     if (err) { res.writeHead(404); return res.end('Not found'); }
-    res.writeHead(200, { 'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream' });
+    res.writeHead(200, { 'Content-Type': type, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-cache' });
     res.end(data);
   });
 });
+server.on('error', (e) => { console.error('Server error:', e.message); process.exit(1); });
 
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, maxPayload: 1024 });
 const rooms = new Map(); // code -> { host, phone, timer }
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const send = (ws, obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 
 function newCode() {
   let s;
-  do {
-    s = '';
-    for (let i = 0; i < 4; i++) s += ALPHABET[Math.floor(Math.random() * ALPHABET.length)];
-  } while (rooms.has(s));
+  do { s = ''; for (let i = 0; i < 4; i++) s += ALPHABET[Math.floor(Math.random() * ALPHABET.length)]; } while (rooms.has(s));
   return s;
 }
-const send = (ws, obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
 
-// message types allowed to be forwarded as-is (raw string, no re-encoding, for low latency)
 const PHONE_TO_HOST = new Set(['tilt', 'shake', 'lat', 'ping']);
 const HOST_TO_PHONE = new Set(['pong', 'vibrate']);
 
 wss.on('connection', (ws) => {
-  ws.alive = true;
+  ws.alive = true; ws.winStart = Date.now(); ws.count = 0;
   ws.on('pong', () => { ws.alive = true; });
+  ws.on('error', () => {});
 
   ws.on('message', (raw) => {
-    let m;
-    try { m = JSON.parse(raw); } catch { return; }
+    const now = Date.now();                                          // per-connection rate limit
+    if (now - ws.winStart > 1000) { ws.winStart = now; ws.count = 0; }
+    if (++ws.count > MAX_MSGS_PER_SEC) return;
+    const m = parse(raw);
+    if (!m) return;
     const room = ws.room && rooms.get(ws.room);
 
     if (m.t === 'host') {
-      let code = String(m.code || '').toUpperCase();
-      if (!/^[A-Z0-9]{4}$/.test(code)) code = newCode();
-      let r = rooms.get(code);
+      let code = m.code, r = code && rooms.get(code);
+      if (!r && rooms.size >= MAX_ROOMS) return send(ws, { t: 'error', msg: 'Server is full, try again later.' });
+      if (!code) code = newCode();
       if (r && r.host && r.host !== ws) { const old = r.host; r.host = null; old.room = null; old.close(); }
       if (!r) { r = { host: null, phone: null, timer: null }; rooms.set(code, r); }
       clearTimeout(r.timer);
@@ -58,17 +64,16 @@ wss.on('connection', (ws) => {
       send(ws, { t: 'room', code, phone: !!(r.phone && r.phone.readyState === 1) });
       send(r.phone, { t: 'hostStatus', connected: true });
     } else if (m.t === 'join') {
-      const code = String(m.code || '').toUpperCase();
-      const r = rooms.get(code);
+      const r = rooms.get(m.code);
       if (!r || !r.host) return send(ws, { t: 'error', msg: 'Room not found. Check the code on your laptop.' });
-      if (r.phone && r.phone !== ws && r.phone.readyState === 1) r.phone.close();
-      r.phone = ws; ws.room = code; ws.role = 'phone';
-      send(ws, { t: 'joined', code });
+      if (r.phone && r.phone !== ws && r.phone.readyState === 1) { const old = r.phone; r.phone = null; old.room = null; old.close(); }
+      r.phone = ws; ws.room = m.code; ws.role = 'phone';
+      send(ws, { t: 'joined', code: m.code });
       send(r.host, { t: 'phone', connected: true });
     } else if (room && ws.role === 'phone' && PHONE_TO_HOST.has(m.t)) {
-      if (room.host && room.host.readyState === 1) room.host.send(raw.toString());
+      send(room.host, m);                                            // re-encoded from the validated copy
     } else if (room && ws.role === 'host' && HOST_TO_PHONE.has(m.t)) {
-      if (room.phone && room.phone.readyState === 1) room.phone.send(raw.toString());
+      send(room.phone, m);
     }
   });
 
@@ -76,25 +81,17 @@ wss.on('connection', (ws) => {
     const r = ws.room && rooms.get(ws.room);
     if (!r) return;
     if (ws.role === 'phone' && r.phone === ws) {
-      r.phone = null;
-      send(r.host, { t: 'phone', connected: false });
+      r.phone = null; send(r.host, { t: 'phone', connected: false });
     } else if (ws.role === 'host' && r.host === ws) {
-      r.host = null;
-      send(r.phone, { t: 'hostStatus', connected: false });
-      const code = ws.room;
-      // keep the room for 2 minutes so the laptop can reconnect with the same code
+      r.host = null; send(r.phone, { t: 'hostStatus', connected: false });
+      const code = ws.room;   // keep the room 2 minutes so the laptop can rejoin with the same code
       r.timer = setTimeout(() => { if (!r.host) rooms.delete(code); }, 120000);
     }
   });
 });
 
-// drop dead connections
-setInterval(() => {
-  wss.clients.forEach((ws) => {
-    if (!ws.alive) return ws.terminate();
-    ws.alive = false;
-    ws.ping();
-  });
+setInterval(() => {   // heartbeat: drop dead sockets
+  wss.clients.forEach((ws) => { if (!ws.alive) return ws.terminate(); ws.alive = false; ws.ping(); });
 }, 15000);
 
-server.listen(PORT, () => console.log(`Tilt controller running on http://localhost:${PORT}`));
+server.listen(PORT, () => console.log(`Pocket Gyro Game running on http://localhost:${PORT}`));

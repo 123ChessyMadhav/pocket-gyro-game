@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Tilt Table</title>
+<title>Pocket Gyro Game</title>
 <style>
   :root { --slate:#1f2a33; --walnut:#5c3d2e; --felt:#2f5d50; --brass:#d4a72c; --steel:#cfd6dd; --crimson:#b3261e; --chalk:#eef1f3; }
   * { box-sizing: border-box; }
@@ -29,12 +29,15 @@
   .tools input[type=range] { accent-color:var(--brass); vertical-align:middle; }
   button.small { padding:6px 14px; font-size:14px; }
   button.ghost { background:#4a5b69; color:var(--chalk); }
+  .steps { text-align:left; max-width:470px; margin:0; padding-left:22px; color:#cdd6dc; }
+  .steps li { margin:6px 0; }
+  .big { font:700 120px/1 Georgia, serif; color:var(--brass); }
   button:focus-visible { outline:3px solid #fff; outline-offset:2px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Tilt Table</h1>
+  <h1>Pocket Gyro Game</h1>
   <div class="stats">
     <div>Score<b id="score">0</b></div>
     <div>Level<b id="level">1</b></div>
@@ -67,9 +70,14 @@
     <h2 style="margin:0" id="pauseMsg">Paused</h2>
     <button id="resume">Resume</button>
   </div>
+  <div class="overlay hidden" id="count"><div class="hint">Get ready</div><div class="big" id="countNum">3</div></div>
   <div class="overlay hidden" id="ready">
     <h2 style="margin:0">Phone connected</h2>
-    <div class="hint">Hold your phone flat and press Calibrate on it. Tilt to roll the ball, collect gold coins quickly for combo points, and avoid the red blocks. Every 8 coins starts a new level with faster blocks and 5 bonus seconds. Shake the phone for a speed boost.</div>
+    <ol class="steps">
+      <li>Hold the phone flat and tap <b>Calibrate</b> on it.</li>
+      <li>Tilt to roll the ball into the <b style="color:#d4a72c">gold coins</b>. Quick pickups build a combo up to x5.</li>
+      <li>Avoid the <b style="color:#ff8a80">red blocks</b>. Every 8 coins starts a new level with 5 bonus seconds. Shake the phone for a speed boost.</li>
+    </ol>
     <button id="start">Start game</button>
   </div>
   <div class="overlay hidden" id="over">
@@ -125,7 +133,7 @@ function connect() {
     setTimeout(connect, Math.min(500 * 2 ** retry++, 5000));
   };
   ws.onmessage = (e) => {
-    const m = JSON.parse(e.data);
+    let m; try { m = JSON.parse(e.data); } catch (err) { return; }
     if (m.t === 'room') {
       roomCode = m.code; sessionStorage.setItem('room', roomCode);
       $('code').textContent = roomCode;
@@ -134,7 +142,7 @@ function connect() {
       $('qr').innerHTML = ''; if (window.QRCode) new QRCode($('qr'), { text: link, width: 170, height: 170 });
       setPhone(m.phone);
     } else if (m.t === 'phone') setPhone(m.connected);
-    else if (m.t === 'tilt') { tilt.x = m.x; tilt.y = m.y; lastTilt = performance.now(); }
+    else if (m.t === 'tilt') { if (Number.isFinite(m.x) && Number.isFinite(m.y)) { tilt.x = clamp(m.x, -1.5, 1.5); tilt.y = clamp(m.y, -1.5, 1.5); lastTilt = performance.now(); } }
     else if (m.t === 'shake') onShake();
     else if (m.t === 'lat') $('lat').textContent = Math.round(m.ms);
     else if (m.t === 'ping') ws.send(JSON.stringify({ t: 'pong', ts: m.ts }));
@@ -169,13 +177,13 @@ addEventListener('keyup', (e) => down.delete(e.code));
 addEventListener('blur', () => down.clear());
 
 // ---------- game state ----------
-let state = 'pair', kbMode = false, pausedBy = '';
+let state = 'pair', kbMode = false, pausedBy = '', countT = 0, countShown = 0;
 let score = 0, timeLeft = 60, level = 1, collected = 0, combo = 0, comboT = 0, boost = 0, hitCd = 0, shakeT = 0, bannerT = 0, lastT = 0;
 let best = +localStorage.getItem('best') || 0;
 let ball, coins = [], blocks = [], parts = [];
 $('best').textContent = best;
 
-const OVERLAYS = ['pair', 'ready', 'pause', 'over'];
+const OVERLAYS = ['pair', 'ready', 'count', 'pause', 'over'];
 function show(name) { state = name; OVERLAYS.forEach((id) => $(id).classList.toggle('hidden', id !== name)); }
 function pause(by) { if (state !== 'play') return; pausedBy = by; $('pauseMsg').textContent = by === 'phone' ? 'Phone disconnected. Reconnecting...' : 'Paused'; show('pause'); }
 function resume() { if (state === 'pause') { pausedBy = ''; lastT = performance.now(); show('play'); } }
@@ -194,7 +202,7 @@ function reset() {
   coins = Array.from({ length: 5 }, spawnCoin);
   blocks = []; for (let i = 0; i < 3; i++) addBlock();
 }
-function startGame() { kbMode = !phoneOn; reset(); lastT = performance.now(); show('play'); tone(440, 0.12); }
+function startGame() { kbMode = !phoneOn; reset(); lastT = performance.now(); countT = 3; countShown = 0; show('count'); }
 $('start').onclick = startGame; $('again').onclick = startGame; $('kbPlay').onclick = startGame;
 
 function onShake() {
@@ -288,6 +296,11 @@ function draw() {
 
 function loop(t) {
   const dt = Math.min((t - lastT) / 1000, 0.05); lastT = t;
+  if (state === 'count') {
+    countT -= dt; const n = Math.ceil(countT);
+    if (n > 0 && n !== countShown) { countShown = n; $('countNum').textContent = n; tone(440, 0.1); }
+    if (countT <= 0) { show('play'); tone(880, 0.18); if (!phoneOn && !kbMode) pause('phone'); }
+  }
   if (state === 'play') update(dt);
   draw();
   $('score').textContent = score; $('time').textContent = Math.ceil(timeLeft); $('level').textContent = level;
